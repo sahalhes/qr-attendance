@@ -14,15 +14,14 @@ function harness(){
  const ss={getSheetByName:name=>name in data?sheet(name):null,insertSheet(name){data[name]=[];return sheet(name);},getId:()=> 'sheet',toast(){}};
  const item={getId:()=>123,asTextItem(){return this;},setTitle(){return this;},setRequired(){return this;},createResponse:value=>value};
  let accepting=false;
- const form={getId:()=> 'form',getEditUrl:()=> 'https://example.com/form/edit',getItemById:()=>item,addTextItem:()=>item,
+ const form={getId:()=> 'form',getEditUrl:()=> 'https://example.com/form/edit',getPublishedUrl:()=> 'https://example.com/form',getItemById:()=>item,addTextItem:()=>item,deleteItem(){return form;},
   setAcceptingResponses(v){accepting=v;return this;},getResponses:since=>responses.filter(r=>r.getTimestamp()>=since),
-  createResponse(){let value;return {withItemResponse(v){value=v;return this;},toPrefilledUrl:()=> 'https://example.com/form?session='+value};}
  };
  ['setDestination','setCollectEmail','setAllowResponseEdits','setLimitOneResponsePerUser','setPublishingSummary','setShowLinkToRespondAgain','setDescription','setConfirmationMessage'].forEach(name=>form[name]=()=>form);
  let sequence=0;
- const ctx=vm.createContext({SpreadsheetApp:{getActiveSpreadsheet:()=>ss,flush(){},newDataValidation:()=>({requireCheckbox(){return this;},build(){return {};}})},PropertiesService:{getDocumentProperties:()=>({getProperty:k=>props[k]??null,setProperty(k,v){props[k]=v;}})},FormApp:{create:()=>form,openById:()=>form,DestinationType:{SPREADSHEET:'sheet'}},LockService:{getDocumentLock:()=>({waitLock(){},releaseLock(){}})},Utilities:{getUuid:()=> 'session-'+(++sequence)}});
+ const ctx=vm.createContext({SpreadsheetApp:{getActiveSpreadsheet:()=>ss,flush(){},newDataValidation:()=>({requireCheckbox(){return this;},build(){return {};}})},PropertiesService:{getDocumentProperties:()=>({getProperty:k=>props[k]??null,setProperty(k,v){props[k]=v;},deleteProperty(k){delete props[k];}})},FormApp:{create:()=>form,openById:()=>form,DestinationType:{SPREADSHEET:'sheet'}},LockService:{getDocumentLock:()=>({waitLock(){},releaseLock(){}})},Utilities:{getUuid:()=> 'session-'+(++sequence)}});
  for(const name of ['Attendance.gs','Code.gs'])vm.runInContext(fs.readFileSync('apps-script/'+name,'utf8'),ctx);
- function submit(email,s,time=new Date()) {responses.push({getId:()=> 'response-'+responses.length+'-'+email,getRespondentEmail:()=>email,getTimestamp:()=>time,getItemResponses:()=>[{getItem:()=>item,getResponse:()=>s.id}]});}
+ function submit(email,s,time=new Date()) {responses.push({getId:()=> 'response-'+responses.length+'-'+email,getRespondentEmail:()=>email,getTimestamp:()=>time,getItemResponses:()=>[]});}
  return {ctx,data,submit,accepting:()=>accepting};
 }
 test('setup is repeatable; open, submit, close, export and historical roster are connected',()=>{
@@ -31,6 +30,7 @@ test('setup is repeatable; open, submit, close, export and historical roster are
  h.data.Students.push(['001','Student A','1','B','a@example.com',true],['002','Student B','1','B','b@example.com',true]);
  assert.throws(()=>h.ctx.openAttendance('1','B',10,false));
  const s=h.ctx.openAttendance('1','B',10,true);assert.equal(h.accepting(),true);
+ assert.equal(s.url,'https://example.com/form');
  assert.throws(()=>h.ctx.openAttendance('1','B',10,true));
  h.submit('A@example.com',s);h.submit('a@example.com',s);h.submit('outsider@example.com',s);
  const report=h.ctx.closeAttendance(s.id);
@@ -39,14 +39,14 @@ test('setup is repeatable; open, submit, close, export and historical roster are
  assert.ok(h.ctx.exportAttendance(s.id,'absent').content.includes('Student B'));
  h.data.Students.splice(1,2,['003','New student','1','B','c@example.com',true]);
  assert.equal(h.ctx.getReport(s.id).absent[0].id,'002');
- const next=h.ctx.openAttendance('1','B',10,true);h.ctx.closeAttendance(s.id);assert.equal(h.accepting(),true);
+ const next=h.ctx.openAttendance('1','B',10,true);assert.equal(next.url,s.url);h.ctx.closeAttendance(s.id);assert.equal(h.accepting(),true);
  h.ctx.closeAttendance(next.id);assert.equal(h.accepting(),false);
 });
 test('deadline rejects late submissions without a background timer; expired session does not close new session',()=>{
  const h=harness();h.ctx.setupAttendance();h.data.Students.push(['001','Student A','1','B','a@example.com',true]);
  const old=h.ctx.openAttendance('1','B',1,true);
  const row=h.data.Sessions[1];row[3]=new Date(Date.now()-120000);row[4]=new Date(Date.now()-60000);
- h.submit('a@example.com',old);
+ h.submit('a@example.com',old,new Date(Date.now()-1000));
  assert.equal(h.ctx.getReport(old.id).present.length,0);
  const current=h.ctx.openAttendance('1','B',1,true);h.ctx.closeAttendance(old.id);
  assert.equal(h.accepting(),true);assert.equal(h.ctx.getReport(current.id).absent.length,1);

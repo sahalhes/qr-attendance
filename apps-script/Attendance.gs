@@ -16,7 +16,7 @@ function calculateAttendance_(roster, responses, session, now) {
   const emails = new Set(roster.map(s => s.email));
   const seen = new Set(), presentEmails = new Set(), rejected = [];
   responses.forEach(r => {
-    if (r.sessionId !== session.id || seen.has(r.id)) return;
+    if (seen.has(r.id)) return;
     seen.add(r.id);
     const email = normalizeEmail_(r.email), time = new Date(r.timestamp).getTime();
     let reason = '';

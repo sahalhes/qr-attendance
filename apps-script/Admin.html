@@ -8,7 +8,7 @@ body{font:14px system-ui,sans-serif;margin:16px;color:#17212b}h1{font-size:20px;
 </head>
 <body>
 <h1>Class attendance</h1>
-<p class="muted">Choose your year and class. Students scan the session QR and submit using their registered Google account.</p>
+<p class="muted">Choose your year and class, then open attendance. The same QR works for every class and every session.</p>
 <a id="formSettings">Open Google Form settings</a>
 <label class="check"><input id="verified" type="checkbox"><span>I set <b>Collect email addresses → Verified</b> in the form settings.</span></label>
 <label for="group">Year / class</label><select id="group"></select>
@@ -20,9 +20,9 @@ body{font:14px system-ui,sans-serif;margin:16px;color:#17212b}h1{font-size:20px;
 <button id="refresh">Refresh attendance</button>
 <section id="details" class="hidden">
 <p id="status"></p>
-<canvas id="qr" aria-label="Session QR code"></canvas>
+<canvas id="qr" aria-label="Common attendance QR code"></canvas>
 <a id="link">Open attendance form</a>
-<button id="downloadQr">Download QR (PNG)</button>
+<button id="downloadQr">Download common QR (PNG)</button>
 <button id="close">Close attendance &amp; update sheets</button>
 <h2 id="counts"></h2>
 <label for="view">Show students</label><select id="view"><option value="absent">Absent / not submitted</option><option value="present">Present</option></select>
@@ -91,7 +91,7 @@ el('refresh').onclick=()=>action(refresh);
 el('sessions').onchange=()=>action(refresh);
 el('close').onclick=()=>action(async()=>{report=await call('closeAttendance',el('sessions').value);render();});
 el('view').onchange=renderPeople;
-el('downloadQr').onclick=()=>el('qr').toBlob(blob=>download(blob,'attendance-'+report.session.id+'.png'));
+el('downloadQr').onclick=()=>el('qr').toBlob(blob=>download(blob,'attendance-common-qr.png'));
 async function exportCsv(kind){const result=await call('exportAttendance',el('sessions').value,kind);download(new Blob([result.content],{type:'text/csv;charset=utf-8'}),result.filename);}
 el('downloadCsv').onclick=()=>action(()=>exportCsv(el('view').value));
 el('downloadAll').onclick=()=>action(()=>exportCsv('all'));

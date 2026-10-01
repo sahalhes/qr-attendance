@@ -45,10 +45,13 @@ function setupAttendance() {
     form.setCollectEmail(true).setAllowResponseEdits(false).setLimitOneResponsePerUser(false).setPublishingSummary(false).setShowLinkToRespondAgain(false);
     form.setDescription('Use the Google account registered in your class roster. A submission is counted only if it matches the roster and attendance window.');
     form.setConfirmationMessage('Submitted. Your teacher will verify it against the class roster and attendance window.');
-    let itemId = props.getProperty('SESSION_ITEM_ID');
-    if (!itemId) {
-      const item = form.addTextItem().setTitle('Session ID').setRequired(true);
-      props.setProperty('SESSION_ITEM_ID', String(item.getId()));
+    // Older versions used a required, prefilled Session ID and therefore produced
+    // a different QR for every class/session. It is no longer needed because the
+    // single live session is identified by its response time.
+    const itemId = props.getProperty('SESSION_ITEM_ID');
+    if (itemId) {
+      form.deleteItem(form.getItemById(Number(itemId)));
+      props.deleteProperty('SESSION_ITEM_ID');
     }
     if (!sessions_().some(s => !s.closedAt && Date.now() <= new Date(s.expiresAt).getTime())) form.setAcceptingResponses(false);
     SpreadsheetApp.getActiveSpreadsheet().toast('Ready. Add students and set the form email collection to Verified before opening attendance.');
@@ -64,6 +67,7 @@ function form_() {
   if (!id) throw new Error('Run setup first.');
   return FormApp.openById(id);
 }
+function commonFormUrl_() { return form_().getPublishedUrl(); }
 function sessions_() {
   return rows_('Sessions').map(r => ({id: String(r[0]), year: String(r[1]), group: String(r[2]), openedAt: new Date(r[3]).toISOString(), expiresAt: new Date(r[4]).toISOString(), closedAt: r[5] ? new Date(r[5]).toISOString() : null, url: String(r[6])}));
 }
@@ -72,7 +76,7 @@ function getDashboard() {
   rows_('Students').forEach(r => {
     if (r[5] === true || String(r[5]).toUpperCase() === 'TRUE') groups.set(JSON.stringify([String(r[2]), String(r[3])]), {year: String(r[2]), group: String(r[3])});
   });
-  return {groups: Array.from(groups.values()), sessions: sessions_().reverse(), formEditUrl: form_().getEditUrl()};
+  return {groups: Array.from(groups.values()), sessions: sessions_().reverse(), formEditUrl: form_().getEditUrl(), commonFormUrl: commonFormUrl_()};
 }
 function openAttendance(year, group, minutes, verifiedEmailConfirmed) {
   return withLock_(function() {
@@ -87,8 +91,9 @@ function openAttendance(year, group, minutes, verifiedEmailConfirmed) {
     // Keep the shared form closed while the next session is prepared.
     form.setAcceptingResponses(false);
     const id = Utilities.getUuid();
-    const item = form.getItemById(Number(PropertiesService.getDocumentProperties().getProperty('SESSION_ITEM_ID'))).asTextItem();
-    const url = form.createResponse().withItemResponse(item.createResponse(id)).toPrefilledUrl();
+    // Every session uses the same responder URL. The selected roster and the
+    // response timestamp determine which students are present.
+    const url = commonFormUrl_();
     const session = {id: id, year: String(year), group: String(group), openedAt: now.toISOString(), expiresAt: new Date(now.getTime() + minutes * 60000).toISOString(), closedAt: null, url: url};
     const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Roster');
     sheet.getRange(sheet.getLastRow() + 1, 1, roster.length, 6).setValues(roster.map(s => [id, s.id, s.name, s.year, s.group, s.email].map(safeCell_)));
@@ -105,11 +110,9 @@ function session_(id) {
 }
 function report_(session) {
   const roster = rows_('Roster').filter(r => r[0] === session.id).map(r => ({id: String(r[1]), name: String(r[2]), year: String(r[3]), group: String(r[4]), email: normalizeEmail_(r[5])}));
-  const itemId = PropertiesService.getDocumentProperties().getProperty('SESSION_ITEM_ID');
   // Read Google Forms directly: delayed/failed spreadsheet submit triggers cannot lose attendance.
   const responses = form_().getResponses(new Date(new Date(session.openedAt).getTime() - 1)).map(r => {
-    const answer = r.getItemResponses().find(i => String(i.getItem().getId()) === itemId);
-    return {id: r.getId(), email: r.getRespondentEmail(), timestamp: r.getTimestamp().toISOString(), sessionId: answer ? String(answer.getResponse()).trim() : ''};
+    return {id: r.getId(), email: r.getRespondentEmail(), timestamp: r.getTimestamp().toISOString()};
   });
   return Object.assign({session: session}, calculateAttendance_(roster, responses, session, Date.now()));
 }

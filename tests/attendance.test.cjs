@@ -7,7 +7,7 @@ vm.runInContext(fs.readFileSync('apps-script/Attendance.gs','utf8'),context);
 const clean=v=>JSON.parse(JSON.stringify(v));
 const students=[['001','A','1','B','A@example.com',true],['002','B','1','B','b@example.com',true],['003','C','2','B','c@example.com',true],['004','D','1','B','d@example.com',false]];
 const session={id:'session',openedAt:'2026-10-01T09:00:00Z',expiresAt:'2026-10-01T09:10:00Z',closedAt:null};
-const response=(id,email,time,sessionId='session')=>({id,email,timestamp:'2026-10-01T09:'+time+'Z',sessionId});
+const response=(id,email,time)=>({id,email,timestamp:'2026-10-01T09:'+time+'Z'});
 test('year/class/active roster; leading zeros and normalized emails',()=>{
  const roster=clean(context.rosterFor_(students,1,'B'));
  assert.equal(roster.length,2);assert.equal(roster[0].id,'001');assert.equal(roster[0].email,'a@example.com');
@@ -17,7 +17,7 @@ test('reject duplicate IDs, emails and missing roster fields',()=>{
 });
 test('only unique registered submissions within session count; boundaries inclusive',()=>{
  const roster=context.rosterFor_(students,1,'B');
- const report=clean(context.calculateAttendance_(roster,[response('early','a@example.com','00:00'),response('duplicate','A@example.com','01:00'),response('unknown','c@example.com','01:00'),response('late','b@example.com','10:01'),response('other','b@example.com','01:00','other')],session,Date.parse('2026-10-01T09:20:00Z')));
+ const report=clean(context.calculateAttendance_(roster,[response('early','a@example.com','00:00'),response('duplicate','A@example.com','01:00'),response('unknown','c@example.com','01:00'),response('late','b@example.com','10:01')],session,Date.parse('2026-10-01T09:20:00Z')));
  assert.deepEqual(report.present.map(s=>s.id),['001']);assert.deepEqual(report.absent.map(s=>s.id),['002']);assert.equal(report.rejected.length,3);
  const boundary=context.calculateAttendance_(roster,[response('a','b@example.com','10:00')],session,Date.parse('2026-10-01T09:20:00Z'));
  assert.equal(boundary.present.length,1);

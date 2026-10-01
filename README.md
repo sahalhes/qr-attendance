@@ -5,10 +5,11 @@ Lightweight year/class attendance using **Google Sheets + Google Forms + Apps Sc
 ## Features
 
 - Master student roster grouped by year and class.
-- Open a timed session and show/download its QR code.
+- One reusable QR code for every class and session.
+- Open a timed session for a selected class and validate submissions against its roster.
 - Close attendance and automatically populate Present and Absent sheets.
 - Review past sessions and download absent, present, or full attendance CSVs.
-- Duplicate, unregistered, wrong-session, and late submissions do not count.
+- Duplicate, unregistered, and late submissions do not count.
 - Each session snapshots its student roster, preserving historical reports when students change year/class.
 - QR generation happens locally, using bundled code with no external request.
 
@@ -20,7 +21,7 @@ Lightweight year/class attendance using **Google Sheets + Google Forms + Apps Sc
    - HTML files: `Admin.html`, `Qr.html` (choose HTML when creating each).
    - Enable **Show appsscript.json manifest file in editor** in Project Settings and replace its contents with the supplied manifest.
 3. Save. Select `setupAttendance` and click **Run**, then authorize the Google Forms and Sheets permissions. Setup creates the tabs and a reusable Google Form. It is safe to rerun on this project's sheets; it validates headers rather than overwriting existing data.
-4. Refresh the spreadsheet. Open **Attendance → Admin dashboard**.
+4. Refresh the spreadsheet. Open **Attendance → Admin dashboard**. If you are upgrading from the class-specific QR version, run **Set up / repair** once; it removes the old Session ID form question.
 5. Click **Open Google Form settings**. In the form, set **Settings → Responses → Collect email addresses → Verified**. The setup API enables email collection, but you must verify this UI setting: respondent-entered emails allow impersonation. Do not enable “Limit to 1 response” because students must attend multiple sessions. Keep response editing and response summaries disabled.
 6. If Google's form UI asks you to **Publish** the form, publish it for the intended students. Restrict responder access to the college domain if your Workspace account offers it. This is Google Forms responder access, not deployment of a custom website.
 7. Populate **Students** with your roster. Use `examples/students.csv` as a header/sample reference; replace its fictional students and emails. Paste values starting at A2 without changing headers. IDs, years and class names are text; leading zeros are preserved. Check **Active** for current students. Emails must match their signed-in Google accounts.
@@ -42,7 +43,7 @@ Use the existing script ID from the spreadsheet's bound Apps Script project, the
 
 1. Select year/class and a 1–180 minute window in the sidebar.
 2. Confirm that verified email collection is configured. Click **Open attendance**.
-3. Display the QR or download its PNG for a projector. Students scan and submit the prefilled form with their registered Google account.
+3. Display the common QR or download its PNG. You can print and reuse this same QR for every class and future session. Students scan and submit with their registered Google account.
 4. Click **Refresh attendance** to see present and provisional absent lists.
 5. Click **Close attendance & update sheets**. Present and Absent show this session's results; both include the Session ID. Download CSVs or select an older session when needed.
 
@@ -62,7 +63,7 @@ Admin reports read the Google Form responses directly, so they do not depend on 
 
 ## Attendance logic
 
-Each session uses a random UUID in the prefilled **Session ID** field. A QR encodes the form URL, not student data. Google Forms prefilled fields are editable; the session value is validated against the selected session and its recorded time window. A submission counts only when the verified respondent email appears in that session's roster and its Google Forms timestamp falls between opening and the earlier of closing/deadline. A registered email counts once. Absent = snapshot roster minus counted emails. The script is not a physical-presence verifier: students can forward QR links.
+The common QR encodes the reusable Google Form URL, not a class, session, or student. Only one session can be live at a time, so a response is assigned by its Google Forms timestamp. A submission counts only when the verified respondent email appears in the selected session's roster and its timestamp falls between opening and the earlier of closing/deadline. A registered email counts once. Absent = snapshot roster minus counted emails. The script is not a physical-presence verifier: students can forward the QR or form link.
 
 Roster duplicates in the selected class cause opening to fail rather than silently dropping a student. Admin UI renders student data as text; CSV exports guard spreadsheet formula injection. Direct use of Forms/Sheets still requires internet and is subject to Google's account policies and Apps Script quotas. This intentionally simple design reads responses from the session's opening onward; very large archives should periodically move to a new master sheet/form.
 
