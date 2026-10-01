@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><base target="_blank">
+<style>
+body{font:14px system-ui,sans-serif;margin:16px;color:#17212b}h1{font-size:20px;margin:0 0 16px}h2{font-size:16px}label{display:block;margin:12px 0 5px}select,input,button{box-sizing:border-box;width:100%;padding:9px;font:inherit;border:1px solid #bbb;border-radius:4px}button{cursor:pointer;background:#f5f5f5;margin-top:8px}button.primary{background:#155c3b;color:white;border-color:#155c3b}button:disabled{opacity:.55;cursor:wait}small,.muted{color:#555}#notice{white-space:pre-wrap;margin:12px 0;min-height:20px}#notice.error{color:#a51b1b}.check{display:flex;gap:8px;align-items:start}.check input{width:auto;margin-top:3px}#qr{display:block;max-width:100%;height:auto;margin:10px auto}table{border-collapse:collapse;width:100%}td,th{padding:6px;border-bottom:1px solid #ddd;text-align:left}#people{max-height:280px;overflow:auto}hr{border:0;border-top:1px solid #ddd;margin:20px 0}.hidden{display:none}#link{word-break:break-all}
+</style>
+</head>
+<body>
+<h1>Class attendance</h1>
+<p class="muted">Choose your year and class. Students scan the session QR and submit using their registered Google account.</p>
+<a id="formSettings">Open Google Form settings</a>
+<label class="check"><input id="verified" type="checkbox"><span>I set <b>Collect email addresses → Verified</b> in the form settings.</span></label>
+<label for="group">Year / class</label><select id="group"></select>
+<label for="minutes">Attendance window (minutes)</label><input id="minutes" type="number" min="1" max="180" value="10">
+<button id="open" class="primary">Open attendance</button>
+<div id="notice" role="status" aria-live="polite"></div>
+<hr>
+<label for="sessions">Current / past sessions</label><select id="sessions"></select>
+<button id="refresh">Refresh attendance</button>
+<section id="details" class="hidden">
+<p id="status"></p>
+<canvas id="qr" aria-label="Session QR code"></canvas>
+<a id="link">Open attendance form</a>
+<button id="downloadQr">Download QR (PNG)</button>
+<button id="close">Close attendance &amp; update sheets</button>
+<h2 id="counts"></h2>
+<label for="view">Show students</label><select id="view"><option value="absent">Absent / not submitted</option><option value="present">Present</option></select>
+<div id="people"></div>
+<p id="rejected" class="muted"></p>
+<button id="downloadCsv">Download absent CSV</button>
+<button id="downloadAll">Download full attendance CSV</button>
+<p class="muted">While a session is open, the absent list is provisional. Submissions after the deadline are excluded even if the form still opens.</p>
+</section>
+<?!= include_('Qr'); ?>
+<script>
+const el=id=>document.getElementById(id);
+let dashboard=null,report=null,busy=false;
+function notice(message,error=false){el('notice').textContent=message;el('notice').className=error?'error':'';}
+function call(name,...args){
+ return new Promise((resolve,reject)=>google.script.run.withSuccessHandler(resolve).withFailureHandler(reject)[name](...args));
+}
+async function action(fn){
+ if(busy)return;busy=true;document.querySelectorAll('button').forEach(b=>b.disabled=true);
+ try{notice('Working…');await fn();notice('Ready.');}catch(e){notice(e.message||String(e),true);}
+ finally{busy=false;document.querySelectorAll('button').forEach(b=>b.disabled=false);syncButtons();}
+}
+function option(value,label){const o=document.createElement('option');o.value=value;o.textContent=label;return o;}
+async function load(selected){
+ dashboard=await call('getDashboard');
+ el('formSettings').href=dashboard.formEditUrl;
+ el('group').replaceChildren(...dashboard.groups.map((g,i)=>option(String(i),'Year '+g.year+' / '+g.group)));
+ el('sessions').replaceChildren(...dashboard.sessions.map(s=>option(s.id,'Year '+s.year+' / '+s.group+' · '+new Date(s.openedAt).toLocaleString())));
+ if(selected)el('sessions').value=selected;
+ if(el('sessions').value)await refresh();
+ syncButtons();
+}
+function syncButtons(){
+ if(busy)return;
+ el('open').disabled=!dashboard||!dashboard.groups.length;
+ el('refresh').disabled=!el('sessions').value;
+ if(report)el('close').textContent=report.session.closedAt?'Update report sheets':'Close attendance & update sheets';
+}
+async function refresh(){report=await call('getReport',el('sessions').value);render();}
+function render(){
+ const s=report.session,expired=Date.now()>new Date(s.expiresAt).getTime();
+ el('details').classList.remove('hidden');
+ el('status').textContent=(s.closedAt?'Closed':expired?'Expired':'Open')+' · Deadline '+new Date(s.expiresAt).toLocaleTimeString();
+ el('link').href=s.url;
+ const qr=new LocalQR.QRCode(-1,LocalQR.level.M);qr.addData(s.url);qr.make();
+ const canvas=el('qr'),ctx=canvas.getContext('2d'),n=qr.getModuleCount(),scale=6,pad=4;
+ canvas.width=canvas.height=(n+pad*2)*scale;ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.fillStyle='#000';
+ for(let r=0;r<n;r++)for(let c=0;c<n;c++)if(qr.isDark(r,c))ctx.fillRect((c+pad)*scale,(r+pad)*scale,scale,scale);
+ el('counts').textContent=report.present.length+' present · '+report.absent.length+' absent';
+ el('rejected').textContent=report.rejected.length+' submissions excluded (duplicates, unregistered emails, or outside the window).';
+ renderPeople();syncButtons();
+}
+function renderPeople(){
+ const people=report[el('view').value],table=document.createElement('table');
+ const head=document.createElement('tr');['ID','Name'].forEach(v=>{const th=document.createElement('th');th.textContent=v;head.append(th);});table.append(head);
+ people.forEach(s=>{const tr=document.createElement('tr');[s.id,s.name].forEach(v=>{const td=document.createElement('td');td.textContent=v;tr.append(td);});table.append(tr);});
+ el('people').replaceChildren(people.length?table:document.createTextNode('No students in this list.'));
+ el('downloadCsv').textContent='Download '+el('view').value+' CSV';
+}
+function download(blob,filename){const a=document.createElement('a'),url=URL.createObjectURL(blob);a.href=url;a.download=filename;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),2000);}
+el('open').onclick=()=>action(async()=>{
+ const g=dashboard.groups[Number(el('group').value)];
+ const s=await call('openAttendance',g.year,g.group,Number(el('minutes').value),el('verified').checked);await load(s.id);
+});
+el('refresh').onclick=()=>action(refresh);
+el('sessions').onchange=()=>action(refresh);
+el('close').onclick=()=>action(async()=>{report=await call('closeAttendance',el('sessions').value);render();});
+el('view').onchange=renderPeople;
+el('downloadQr').onclick=()=>el('qr').toBlob(blob=>download(blob,'attendance-'+report.session.id+'.png'));
+async function exportCsv(kind){const result=await call('exportAttendance',el('sessions').value,kind);download(new Blob([result.content],{type:'text/csv;charset=utf-8'}),result.filename);}
+el('downloadCsv').onclick=()=>action(()=>exportCsv(el('view').value));
+el('downloadAll').onclick=()=>action(()=>exportCsv('all'));
+action(()=>load());
+</script>
+</body>
+</html>

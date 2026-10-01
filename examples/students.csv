@@ -1,0 +1,4 @@
+Student ID,Name,Year,Class,Email,Active
+001,Example Student A,1,A,student-a@example.com,TRUE
+002,Example Student B,1,A,student-b@example.com,TRUE
+003,Example Student C,2,B,student-c@example.com,TRUE
